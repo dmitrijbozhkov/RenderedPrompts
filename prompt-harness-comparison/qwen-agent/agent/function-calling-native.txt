@@ -1,0 +1,37 @@
+# Qwen Agent — FnCallAgent with provider-native function calling
+
+[SYSTEM]
+{caller_system_message}
+
+[CONVERSATION HISTORY]
+{prior_chat_history}
+
+[USER]
+What is the weather in {city}?
+
+[TOOLS — provider-native request field]
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "city": {"type": "string", "description": "City name"}
+        },
+        "required": ["city"]
+      }
+    }
+  }
+]
+
+[ASSISTANT — provider-native tool call]
+{"name":"get_weather","arguments":{"city":"{city}"}}
+
+[TOOL]
+{weather_tool_result}
+
+# FnCallAgent appends the tool result and calls the model again until the model
+# stops issuing function calls or the configured call limit is reached.

@@ -1,0 +1,38 @@
+# Qwen Agent — BasicDocQA, English prompt branch
+
+[SYSTEM]
+{caller_system_message}
+
+[USER — retrieval prompt inserted before the question]
+Please fully understand the content of the following reference materials and organize a clear response that meets the user's questions.
+# Reference materials:
+
+{retrieved_document_chunks}
+
+[CONVERSATION HISTORY]
+{prior_chat_history}
+
+[USER]
+{question}
+
+[TOOLS]
+Any configured function schemas remain attached through the selected LLM adapter. Retrieval itself has already run before this render.
+
+---
+
+# Qwen Agent — BasicDocQA, Chinese prompt branch
+
+[SYSTEM]
+{caller_system_message}
+
+[USER — retrieval prompt inserted before the question]
+请充分理解以下参考资料内容，组织出满足用户提问的条理清晰的回复。
+#参考资料：
+
+{retrieved_document_chunks}
+
+[CONVERSATION HISTORY]
+{prior_chat_history}
+
+[USER]
+{question}

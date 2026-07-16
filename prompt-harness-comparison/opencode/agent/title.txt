@@ -1,0 +1,16 @@
+# OpenCode 1.18.2 — hidden title call
+
+[SYSTEM]
+No system messages: the request passes system: [].
+
+[USER]
+Generate a title for this conversation:
+
+[MESSAGES]
+{first_real_user_context_or_subtask_prompts}
+
+[TOOLS]
+None.
+
+[RUNTIME]
+The small model is preferred; retries=2. The result removes <think> blocks, takes the first non-empty trimmed line, and truncates values over 100 characters to 97 characters plus "...".

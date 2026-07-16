@@ -1,0 +1,54 @@
+harness	path	workflow	context
+qwen-code	qwen-code/agent/coding.txt	primary coding	main session
+qwen-code	qwen-code/agent/plan.txt	plan mode modifier	main session
+qwen-code	qwen-code/agent/compaction.txt	context compression	hidden system workflow
+qwen-code	qwen-code/agent/subagent/general-purpose.txt	general worker	fresh child
+qwen-code	qwen-code/agent/subagent/explore.txt	read-only exploration	fresh child
+qwen-code	qwen-code/agent/subagent/workflow.txt	workflow runner	fresh child
+qwen-code	qwen-code/agent/subagent/workflow-structured.txt	workflow structured output	fresh child
+qwen-code	qwen-code/agent/subagent/fork-worker.txt	fork worker	inherited trajectory
+qwen-code	qwen-code/agent/subagent/teammate.txt	team member	team context
+qwen-agent	qwen-agent/agent/function-calling-nous.txt	textual function calling	main agent
+qwen-agent	qwen-agent/agent/function-calling-native.txt	native function calling	main agent
+qwen-agent	qwen-agent/agent/react-chat.txt	ReAct tool loop	main agent
+qwen-agent	qwen-agent/agent/basic-doc-qa.txt	retrieval augmented QA	main agent
+qwen-agent	qwen-agent/agent/group-chat-router.txt	speaker routing	orchestrator
+qwen-agent	qwen-agent/agent/subagent/group-chat-participant.txt	selected participant	role-rewritten shared chat
+opencode	opencode/agent/build.txt	build	primary
+opencode	opencode/agent/plan.txt	plan	primary
+opencode	opencode/agent/structured-output.txt	structured-output modifier	primary/subagent modifier
+opencode	opencode/agent/compaction.txt	compaction	hidden
+opencode	opencode/agent/title.txt	title generation	hidden
+opencode	opencode/agent/summary.txt	session summary	hidden
+opencode	opencode/agent/subagent/general.txt	general	child session
+opencode	opencode/agent/subagent/explore.txt	explore	child session
+opencode	opencode/agent/subagent/scout.txt	scout	child session
+opencode	opencode/agent/subagent/custom.txt	custom subagent	child session
+ms-agent	ms-agent/agent/default-llm-agent.txt	default LLMAgent	main agent
+ms-agent	ms-agent/agent/personalized-skilled.txt	personalization and skills	main agent
+ms-agent	ms-agent/agent/subagent/configured-agent-tool.txt	configured AgentTool	fresh agent
+ms-agent	ms-agent/agent/subagent/dynamic-split-task.txt	dynamic split task	fresh agent
+ms-agent	ms-agent/agent/subagent/plugin-task.txt	plugin Task delegation	fresh agent
+letta-code	letta-code/agent/default-memfs.txt	default MemFS	persistent primary
+letta-code	letta-code/agent/default-no-memfs.txt	default no-MemFS	persistent primary
+letta-code	letta-code/agent/source-claude.txt	Claude Code source preset	persistent primary
+letta-code	letta-code/agent/source-codex.txt	Codex source preset	persistent primary
+letta-code	letta-code/agent/source-gemini.txt	Gemini CLI source preset	persistent primary
+letta-code	letta-code/agent/subagent/general-purpose.txt	general-purpose	fresh specialized agent
+letta-code	letta-code/agent/subagent/fork.txt	fork	inherited trajectory
+letta-code	letta-code/agent/subagent/recall.txt	recall fork	inherited trajectory
+letta-code	letta-code/agent/subagent/init.txt	memory initialization	fresh specialized agent
+letta-code	letta-code/agent/subagent/memory.txt	memory reorganization	fresh specialized agent
+letta-code	letta-code/agent/subagent/history-analyzer.txt	history analysis	fresh specialized agent
+letta-code	letta-code/agent/subagent/reflection.txt	background reflection	fresh specialized agent
+little-coder	little-coder/agent/coding.txt	normal coding	primary
+little-coder	little-coder/agent/plan-synthesis.txt	plan synthesis	primary one-shot
+little-coder	little-coder/agent/deep-research-write.txt	deep research synthesis	primary one-shot
+little-coder	little-coder/agent/subagent/dispatch-research.txt	manual dispatch research	fresh child process
+little-coder	little-coder/agent/subagent/plan-decompose.txt	plan target decomposition	fresh child process
+little-coder	little-coder/agent/subagent/plan-questions.txt	plan question generation	fresh child process
+little-coder	little-coder/agent/subagent/research-clarify.txt	deep research clarification	fresh child process
+little-coder	little-coder/agent/subagent/research-brief.txt	deep research brief	fresh child process
+little-coder	little-coder/agent/subagent/research-decompose.txt	deep research fan-out	fresh child process
+little-coder	little-coder/agent/subagent/research-gap.txt	deep research gap analysis	fresh child process
+little-coder	little-coder/agent/subagent/research-worker.txt	deep research browsing	fresh child process

@@ -1,0 +1,34 @@
+# Qwen Agent — FnCallAgent with the Nous text adapter
+
+[SYSTEM]
+{caller_system_message}
+
+# Tools
+You may call one or more functions to assist with the user query.
+You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{"type":"function","function":{"name":"get_weather","description":"Get the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name"}},"required":["city"]}}}
+</tools>
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call>
+
+[CONVERSATION HISTORY AFTER ADAPTER PREPROCESSING]
+{prior_non_tool_messages}
+
+[USER]
+What is the weather in {city}?
+
+[ASSISTANT]
+<tool_call>
+{"name":"get_weather","arguments":{"city":"{city}"}}
+</tool_call>
+
+[USER]
+<tool_response>
+{weather_tool_result}
+</tool_response>
+
+[TOOLS API FIELD]
+None. The schemas are in the system text, and the adapter parses the <tool_call> tags from assistant text.

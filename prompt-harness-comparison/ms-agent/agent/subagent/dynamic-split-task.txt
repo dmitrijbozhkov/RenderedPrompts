@@ -1,0 +1,20 @@
+# MS Agent — split_to_sub_task child
+# Exact parent tool argument shape:
+# {"tasks":[{"system":"{child_system}","query":"{child_query}"}],"execution_mode":"parallel"}
+
+[SYSTEM]
+{child_system}
+
+[USER]
+{child_query}
+
+[TOOLS]
+The copied parent/base child tools are attached, minus tools disallowed for subagents.
+
+[RUNTIME]
+ms_agent_subagent=true
+execution_mode=parallel
+parent_history is not copied automatically
+
+# task.system overwrites prompt.system in a copy of the parent/base config.
+# There is no additional built-in subagent sentence before or after it.

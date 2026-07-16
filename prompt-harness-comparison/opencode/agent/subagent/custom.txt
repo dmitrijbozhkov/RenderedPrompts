@@ -1,0 +1,30 @@
+# OpenCode 1.18.2 — custom subagent with a configured prompt
+
+[SYSTEM]
+{custom_agent_markdown_body}
+
+You are powered by the model named {model_name}. The exact model ID is {provider_id}/{model_id}
+Here are some useful information about the environment you are running in:
+<env>
+  Working directory: {working_directory}
+  Is directory a git repo: {yes_or_no}
+  Platform: {platform}
+  Today's date: {current_date}
+</env>
+
+Instructions from: {global_instruction_path}
+{global_instructions}
+
+Instructions from: {project_instruction_path}
+{project_instructions}
+
+{configured_local_or_remote_instructions}
+
+[USER]
+{task_tool_generated_prompt}
+
+[TOOLS]
+Provider-native schemas allowed by the custom agent's merged permissions.
+
+[MANUAL @MENTION SYNTHETIC TEXT INSERTED INTO THE PRIMARY TURN]
+ Use the above message and context to generate a prompt and call the task tool with subagent: {custom_agent_name}{optional_model_hint}

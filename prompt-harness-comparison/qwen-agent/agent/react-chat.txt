@@ -1,0 +1,38 @@
+# Qwen Agent — ReActChat
+
+[SYSTEM]
+{caller_system_message}
+
+[PRIOR TEXT MESSAGES]
+{prior_text_messages}
+
+[USER — rewritten final message]
+Answer the following questions as best you can. You have access to the following tools:
+
+get_weather: Call this tool to interact with the Weather API. What is the Weather API useful for? Get the current weather for a city. Parameters: {"type":"object","properties":{"city":{"type":"string","description":"City name"}},"required":["city"]} Format the arguments as a JSON object.
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [get_weather]
+Action Input: the input to the action
+Observation: the result of the action
+... (this ... can be repeated zero or more times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: What is the weather in {city}?
+Thought:
+
+[TOOLS API FIELD]
+None. Tool descriptions are text inside the rewritten final user message.
+
+[RUNTIME STOP STRINGS]
+Observation:
+Observation:\n
+
+# The harness calls the named tool, appends Observation and a new Thought marker
+# to the same working prompt, and repeats until Final Answer.

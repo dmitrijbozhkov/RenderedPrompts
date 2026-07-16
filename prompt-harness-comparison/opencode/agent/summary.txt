@@ -1,0 +1,14 @@
+# OpenCode 1.18.2 — session file-change summary
+
+[MODEL PROMPT]
+None. The current session summary path does not call an LLM. It computes diffs between the step-start and step-finish snapshots and stores additions, deletions, file count, and per-file diff metadata on the user turn.
+
+[INPUT]
+step-start snapshot: {start_snapshot}
+step-finish snapshot: {finish_snapshot}
+
+[OUTPUT METADATA]
+additions={addition_count}
+deletions={deletion_count}
+files={changed_file_count}
+diffs={per_file_diff_records}

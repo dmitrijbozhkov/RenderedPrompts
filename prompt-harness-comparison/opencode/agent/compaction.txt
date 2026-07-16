@@ -1,0 +1,108 @@
+# OpenCode 1.18.2 — hidden compaction call, first summary
+
+[SYSTEM]
+No system messages are supplied by the compaction path.
+
+[CONVERSATION HISTORY SERIALIZATION]
+{conversation_head_to_summarize}
+
+[USER]
+Create a new anchored summary from the conversation history.
+
+Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
+
+<template>
+## Objective
+
+- [one or two brief sentences describing what the user is trying to accomplish]
+
+## Important Details
+
+- [constraints/preferences, decisions and why, important facts/assumptions, exact context needed to continue, or "(none)"]
+
+## Work State
+
+### Completed
+
+- [finished work, verified facts, or changes made; otherwise "(none)"]
+
+### Active
+
+- [current work, partial changes, or investigation state; otherwise "(none)"]
+
+### Blocked
+
+- [blockers, failing commands, or unknowns; otherwise "(none)"]
+## Next Move
+
+1. [immediate concrete action, or "(none)"]
+
+2. [next action if known, or "(none)"]
+## Relevant Files
+
+- [file or directory path: why it matters, or "(none)"]
+
+</template>
+
+Rules:
+
+- Keep every section, even when empty.
+- Use terse bullets, not prose paragraphs.
+- Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers when known.
+- Do not mention the summary process or that context was compacted.
+
+---
+
+# OpenCode 1.18.2 — hidden compaction call, updating an earlier summary
+
+[USER]
+Update the anchored summary below using the conversation history above.
+Preserve still-true details, remove stale details, and merge in the new facts.
+<previous-summary>
+{previous_anchored_summary}
+</previous-summary>
+
+Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
+
+<template>
+## Objective
+
+- [one or two brief sentences describing what the user is trying to accomplish]
+
+## Important Details
+
+- [constraints/preferences, decisions and why, important facts/assumptions, exact context needed to continue, or "(none)"]
+
+## Work State
+
+### Completed
+
+- [finished work, verified facts, or changes made; otherwise "(none)"]
+
+### Active
+
+- [current work, partial changes, or investigation state; otherwise "(none)"]
+
+### Blocked
+
+- [blockers, failing commands, or unknowns; otherwise "(none)"]
+## Next Move
+
+1. [immediate concrete action, or "(none)"]
+
+2. [next action if known, or "(none)"]
+## Relevant Files
+
+- [file or directory path: why it matters, or "(none)"]
+
+</template>
+
+Rules:
+
+- Keep every section, even when empty.
+- Use terse bullets, not prose paragraphs.
+- Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers when known.
+- Do not mention the summary process or that context was compacted.
+
+[POST-COMPACTION SYNTHETIC USER MESSAGE]
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.

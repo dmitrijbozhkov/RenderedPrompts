@@ -1,0 +1,24 @@
+# Letta Code 0.28.8 — forked subagent
+
+[SYSTEM]
+{parent_persisted_system_prompt}
+
+[INHERITED CONVERSATION]
+{full_parent_conversation_trajectory}
+
+[USER]
+<system-reminder>
+You have been forked from the primary conversational thread to run as an independent subagent. The fork only exists so you can see the parent agent's conversation trajectory in-context as reference — you are NOT the primary agent and do not share its full toolset.
+
+**Your sole task is the one described in the user message below. Ignore any existing ongoing tasks from the inherited trajectory.** Do not attempt to continue, finish, or act on anything the primary agent was in the middle of doing.
+
+You have a scoped toolset that may differ from the primary agent's. Stay within it; don't assume you have the primary's full tool access.
+
+You CANNOT ask questions mid-execution — all instructions are provided upfront.
+Your final message will be returned to the caller.
+</system-reminder>
+
+{fork_task}
+
+[TOOLS]
+The fork receives the scoped tool set from its subagent configuration, not the parent's full tool set.

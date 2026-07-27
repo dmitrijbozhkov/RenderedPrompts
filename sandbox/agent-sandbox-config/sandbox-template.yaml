@@ -1,0 +1,48 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: python-shared
+  namespace: agent-sandbox-demo
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: python-shared-sandbox
+    spec:
+      # For untrusted code, configure a RuntimeClass installed in the cluster:
+      # runtimeClassName: gvisor
+      containers:
+        - name: python-runtime
+          image: us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/python-runtime-sandbox:latest-main
+          ports:
+            - name: runtime
+              containerPort: 8888
+          readinessProbe:
+            httpGet:
+              path: /
+              port: runtime
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /
+              port: runtime
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+              ephemeral-storage: 2Gi
+          volumeMounts:
+            - name: shared-workspace
+              mountPath: /shared
+      restartPolicy: OnFailure
+      volumes:
+        - name: shared-workspace
+          persistentVolumeClaim:
+            claimName: shared-workspace
+

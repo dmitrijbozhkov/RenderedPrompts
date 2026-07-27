@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "persistent-python-agent"
+version = "0.1.0"
+description = "An OpenAI Agents SDK example with persistent Python, web, and ParadeDB RAG tools"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "dill>=0.3.8,<1",
+  "filelock>=3.13,<4",
+  "httpx>=0.27,<1",
+  "jinja2>=3.1,<4",
+  "openai>=1.99,<3",
+  "openai-agents>=0.7,<1",
+  "pgvector>=0.3,<1",
+  "pydantic>=2,<3",
+  "psycopg[binary]>=3.1.18,<4",
+  "sqlalchemy-paradedb>=0.8,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+persistent-python-agent = "persistent_python_agent.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/persistent_python_agent"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/README.md",
+  "/pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,229 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mmarco-reranker
+  namespace: reranking
+  labels:
+    app.kubernetes.io/name: mmarco-reranker
+spec:
+  replicas: 1
+
+  # A single CPU deployment plus a ReadWriteOnce cache is simplest with Recreate.
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mmarco-reranker
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mmarco-reranker
+    spec:
+      terminationGracePeriodSeconds: 30
+
+      # This is a custom node label. Apply it only to nodes whose CPUs support
+      # AVX-512 VNNI:
+      # kubectl label node <node-name> reranker.cpu/avx512-vnni=true
+      nodeSelector:
+        reranker.cpu/avx512-vnni: "true"
+
+      initContainers:
+        - name: prepare-int8-model
+          image: debian:bookworm-slim
+          imagePullPolicy: IfNotPresent
+          env:
+            # The mounted PVC root is the Hugging Face Hub cache directory:
+            # models--<owner>--<repo>/{refs,blobs,snapshots}
+            - name: HF_CACHE_DIR
+              value: /data/hub
+
+            - name: MODEL_CACHE_REPO
+              value: models--cross-encoder--mmarco-mMiniLMv2-L12-H384-v1
+
+            # Change this to model_qint8_avx512.onnx or
+            # model_quint8_avx2.onnx for other x86 CPU capabilities.
+            - name: QUANTIZED_ONNX
+              value: onnx/model_qint8_avx512_vnni.onnx
+
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              REPO_DIR="${HF_CACHE_DIR}/${MODEL_CACHE_REPO}"
+
+              test -d "${REPO_DIR}" || {
+                echo "Cached repository is missing: ${REPO_DIR}" >&2
+                exit 1
+              }
+
+              test -s "${REPO_DIR}/refs/main" || {
+                echo "Cached main revision is missing: ${REPO_DIR}/refs/main" >&2
+                exit 1
+              }
+
+              REVISION="$(tr -d '\r\n' < "${REPO_DIR}/refs/main")"
+              SNAPSHOT_DIR="${REPO_DIR}/snapshots/${REVISION}"
+              SOURCE_ONNX="${SNAPSHOT_DIR}/${QUANTIZED_ONNX}"
+
+              test -d "${SNAPSHOT_DIR}" || {
+                echo "Cached snapshot is missing: ${SNAPSHOT_DIR}" >&2
+                exit 1
+              }
+
+              test -s "${SOURCE_ONNX}" || {
+                echo "Quantized ONNX model is missing: ${SOURCE_ONNX}" >&2
+                exit 1
+              }
+
+              rm -rf /model/*
+
+              # Snapshot entries are normally symlinks into ../../blobs.
+              # --dereference materializes actual files in the emptyDir.
+              tar --dereference \
+                  -C "${SNAPSHOT_DIR}" \
+                  -cf - . \
+                | tar -C /model -xf -
+
+              # Replace the ordinary ONNX graph with the selected INT8 graph
+              # under the canonical filename TEI loads.
+              install -D -m 0444 \
+                "${SOURCE_ONNX}" \
+                /model/onnx/model.onnx
+
+              test -s /model/config.json
+              test -s /model/onnx/model.onnx
+
+              echo "Prepared revision ${REVISION}"
+              ls -lh /model/onnx/model.onnx
+
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /data/hub
+              readOnly: true
+            - name: prepared-model
+              mountPath: /model
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+      containers:
+        - name: tei
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+          imagePullPolicy: IfNotPresent
+
+          args:
+            - --model-id
+            - /model
+            - --port
+            - "80"
+            - --max-client-batch-size
+            - "40"
+            - --max-batch-tokens
+            - "8192"
+            - --max-concurrent-requests
+            - "16"
+
+          env:
+            - name: HUGGINGFACE_HUB_CACHE
+              value: /data/hub
+            - name: HF_HOME
+              value: /data
+            - name: OMP_NUM_THREADS
+              value: "8"
+            - name: MKL_NUM_THREADS
+              value: "8"
+            - name: TOKENIZERS_PARALLELISM
+              value: "false"
+
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /data/hub
+              readOnly: true
+            - name: prepared-model
+              mountPath: /model
+              readOnly: true
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 60
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "8"
+              memory: 4Gi
+            limits:
+              cpu: "8"
+              memory: 4Gi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: huggingface-cache
+
+        # The init container creates a self-contained local model directory
+        # here; TEI consumes it through --model-id /model.
+        - name: prepared-model
+          emptyDir:
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mmarco-reranker
+  namespace: reranking
+  labels:
+    app.kubernetes.io/name: mmarco-reranker
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mmarco-reranker
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

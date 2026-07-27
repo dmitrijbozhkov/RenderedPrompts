@@ -1,0 +1,10 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: python-shared
+  namespace: agent-sandbox-demo
+spec:
+  replicas: 3
+  sandboxTemplateRef:
+    name: python-shared
+

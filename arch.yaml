@@ -1,6 +1,355 @@
-
-    
-  
+# SGLang workers + shared Mooncake L3 + Kubernetes-discovering Model Gateway.
+# Apply: kubectl apply -f sglang-kubernetes.yaml
+# Scale: kubectl -n inference scale deployment/sglang-worker --replicas=2
+# Access: kubectl -n inference port-forward svc/sglang-gateway 8000:8000
+# Inspect: curl http://localhost:8000/workers
+# OpenAI base URL: http://localhost:8000/v1 ; model: swift-27b
+#
+# Prerequisites: NVIDIA device plugin/GPU Operator and a working container runtime;
+# GPU nodes with L40-class 48 GB cards; CNI with routable Pod IPs; registry and
+# Hugging Face egress; enough node RAM and disk for the resource requests below.
+# Add runtimeClassName: nvidia to the worker if your cluster requires it.
+#
+# Images use upstream latest for this initial example. Before production, resolve
+# and pin all images to tested digests. Worker and cache use the SAME SGLang image
+# so the bundled Mooncake wheel/protocol matches. Verify that image contains
+# mooncake_master and mooncake.mooncake_store_service. Do not pip-install packages
+# during Pod startup. Use a custom image if your selected upstream image omits them.
+#
+# This file is syntax-checked, not exercised on a live GPU Kubernetes cluster.
+# Check the chosen image's support for this exact Swift quant, FP8 HiCache,
+# hybrid/GDN state offload, page_first, and write_back with an L3 round-trip test.
+# Shared cache users must have identical checkpoint revision, KV dtype, page size,
+# TP/PP layout and state precision. Change extra_backend_tag after any such change.
+#
+# Initial GPU KV pool is capped to 262144 tokens TOTAL, not per concurrent request.
+# Eight running requests permit shorter mixed traffic; they do not guarantee eight
+# full-context sessions. Measure boot-reported capacity before increasing the pool.
+# L3 does not expand the KV capacity needed on GPU for an active request.
+#
+# RAM pool: 16 GiB L2 per worker + 64 GiB L3. Additional RAM is needed for model
+# loading, recurrent host state and processes. Adjust resources to actual node RAM.
+# Model downloads use disk emptyDir; replace hf-cache with an appropriate PVC for
+# reuse across Pod restarts. Do not share an RWO volume across different nodes.
+#
+# Mooncake master and RAM store are deliberately a single Recreate Deployment:
+# one master, one store, no HA, no SSD persistence. Cache Pod replacement loses L3.
+# After a master/container restart, restart the whole cache Pod and verify worker
+# reconnection; restart workers if their selected backend cannot reconnect.
+# Never scale this cache Deployment above one: that creates unrelated masters.
+#
+# Discovery watches Pods by labels and registers their individual Pod IPs. It does
+# not route through a load-balanced worker Service. No worker Service is required.
+# To create separate worker Deployments, use distinct Deployment selectors while
+# retaining the gateway's discovery labels on all their Pod templates.
+#
+# Gateway uses cache_aware. For explicit agent affinity, replace it with manual
+# and add --assignment-mode=min_load and --max-idle-secs=86400; send a stable
+# X-SMG-Routing-Key per agent. Verify these options in your pinned gateway image.
+# Keep a single gateway replica when relying on its in-memory routing state.
+#
+# Sources (consulted 2026-10-07):
+# https://github.com/sgl-project/sglang/blob/main/sgl-model-gateway/README.md
+# https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/mem_cache/storage/mooncake_store/README.md
+# https://kvcache-ai.github.io/Mooncake/deployment/mooncake-store-deployment-guide.html
+# https://github.com/sgl-project/sglang/blob/main/docs/cookbook/autoregressive/Qwen/Qwen3.8-27B.mdx
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inference
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mooncake-connection
+  namespace: inference
+data:
+  MOONCAKE_MASTER: mooncake.inference.svc.cluster.local:50051
+  MOONCAKE_TE_META_DATA_SERVER: http://mooncake.inference.svc.cluster.local:8080/metadata
+  MOONCAKE_PROTOCOL: tcp
+  MOONCAKE_DEVICE: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mooncake
+  namespace: inference
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mooncake
+  template:
+    metadata:
+      labels:
+        app: mooncake
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: master
+          image: lmsysorg/sglang:latest
+          imagePullPolicy: Always
+          command: [mooncake_master]
+          args:
+            - --rpc_address=$(POD_IP)
+            - --rpc_port=50051
+            - --enable_http_metadata_server=true
+            - --http_metadata_server_host=0.0.0.0
+            - --http_metadata_server_port=8080
+            - --eviction_high_watermark_ratio=0.95
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - name: master-rpc
+              containerPort: 50051
+            - name: metadata
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          startupProbe:
+            tcpSocket:
+              port: master-rpc
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: master-rpc
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: master-rpc
+            periodSeconds: 10
+            failureThreshold: 6
+        - name: store
+          image: lmsysorg/sglang:latest
+          imagePullPolicy: Always
+          command: [/bin/bash, -ec]
+          args:
+            - |
+              # Containers start concurrently. Wait for the co-located master.
+              python3 - <<'PY'
+              import socket, time
+              for attempt in range(180):
+                  try:
+                      with socket.create_connection(('127.0.0.1', 50051), timeout=2):
+                          break
+                  except OSError:
+                      time.sleep(2)
+              else:
+                  raise SystemExit('Mooncake master did not become reachable')
+              PY
+              exec python3 -m mooncake.mooncake_store_service --port=8081
+          env:
+            # Advertise the routable Pod IP, never localhost or a shared Service IP.
+            - name: MOONCAKE_LOCAL_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MOONCAKE_MASTER
+              value: "127.0.0.1:50051"
+            - name: MOONCAKE_TE_META_DATA_SERVER
+              value: http://127.0.0.1:8080/metadata
+            - name: MOONCAKE_PROTOCOL
+              value: tcp
+            - name: MOONCAKE_DEVICE
+              value: ""
+            - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
+              value: "68719476736" # 64 GiB of L3 RAM; not an on-disk volume.
+            - name: MOONCAKE_LOCAL_BUFFER_SIZE
+              value: "0" # Storage-only process does not need a client staging pool.
+          ports:
+            - name: store-http
+              containerPort: 8081
+          resources:
+            requests:
+              cpu: "4"
+              memory: 68Gi
+            limits:
+              cpu: "8"
+              memory: 72Gi
+          startupProbe:
+            tcpSocket:
+              port: store-http
+            periodSeconds: 5
+            failureThreshold: 180
+          readinessProbe:
+            tcpSocket:
+              port: store-http
+            periodSeconds: 5
+          # Dynamic transfer-engine ports are contacted directly at the Pod IP.
+          # The HTTP port is a control API, not the KV transfer endpoint.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mooncake
+  namespace: inference
+spec:
+  selector:
+    app: mooncake
+  ports:
+    - name: master-rpc
+      port: 50051
+      targetPort: master-rpc
+    - name: metadata
+      port: 8080
+      targetPort: metadata
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sglang-worker
+  namespace: inference
+spec:
+  replicas: 1 # Increase to 2 for your two GPUs: each Pod requests exactly one GPU.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0 # Do not require a spare GPU during updates.
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: sglang-worker
+      worker-group: swift-27b
+  template:
+    metadata:
+      labels:
+        app: sglang-worker
+        worker-group: swift-27b
+        role: inference
+        model: swift-27b
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 600
+      # runtimeClassName: nvidia # Uncomment if required by your GPU runtime.
+      containers:
+        - name: sglang
+          image: lmsysorg/sglang:latest
+          imagePullPolicy: Always
+          command: [python3, -m, sglang.launch_server]
+          args:
+            - --model-path=ukisai/Swift-1.5-Qwen3.8-27b-INT4
+            - --served-model-name=swift-27b
+            - --host=0.0.0.0
+            - --port=30000
+            - --tp-size=1
+            - --dp-size=1
+            - --context-length=262144
+            - --max-total-tokens=262144
+            - --max-running-requests=8
+            - --kv-cache-dtype=fp8_e4m3
+            - --mamba-ssm-dtype=bfloat16
+            - --mamba-radix-cache-strategy=extra_buffer_lazy
+            - --max-mamba-cache-size=32
+            - --chunked-prefill-size=2048
+            - --mem-fraction-static=0.88
+            - --reasoning-parser=qwen3
+            - --tool-call-parser=qwen3_coder
+            - --enable-hierarchical-cache
+            - --hicache-size=16
+            - --hicache-write-policy=write_back
+            - --hicache-io-backend=kernel
+            - --hicache-mem-layout=page_first
+            - --page-size=64
+            - --hicache-storage-backend=mooncake
+            # One namespace for this exact model/cache format, shared by workers.
+            # Replace tag with checkpoint commit + cache format before production.
+            - '--hicache-storage-backend-extra-config={"extra_backend_tag":"swift27b-int4-fp8-bf16-tp1-page64-v1"}'
+            - --enable-metrics
+          envFrom:
+            - configMapRef:
+                name: mooncake-connection
+          env:
+            - name: MOONCAKE_LOCAL_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
+              value: "0" # The separate store owns the shared L3 memory.
+            - name: HF_HOME
+              value: /model-cache/huggingface
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: huggingface-token
+                  key: token
+                  optional: true
+          ports:
+            - name: worker-http
+              containerPort: 30000
+          resources:
+            requests:
+              cpu: "8"
+              memory: 40Gi
+              ephemeral-storage: 50Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "16"
+              memory: 48Gi
+              ephemeral-storage: 100Gi
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+            - name: hf-cache
+              mountPath: /model-cache
+          startupProbe:
+            httpGet:
+              path: /health
+              port: worker-http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 360 # Allow up to one hour for download/load/JIT.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: worker-http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # No generation-based liveness probe: long prefills should not trigger
+          # restarts. The process exit and SGLang's own watchdog handle failures.
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi # Usage counts toward the worker's memory limit.
+        - name: hf-cache
+          emptyDir:
+            sizeLimit: 80Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sglang-gateway
+  namespace: inference
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sglang-gateway-discovery
+  namespace: inference
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
   name: sglang-gateway-discovery
   namespace: inference
@@ -139,4 +488,3 @@ spec:
         - podSelector:
             matchLabels:
               app: sglang-worker
-

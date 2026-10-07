@@ -1,0 +1,142 @@
+
+    
+  
+metadata:
+  name: sglang-gateway-discovery
+  namespace: inference
+subjects:
+  - kind: ServiceAccount
+    name: sglang-gateway
+    namespace: inference
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sglang-gateway-discovery
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sglang-gateway
+  namespace: inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-gateway
+  template:
+    metadata:
+      labels:
+        app: sglang-gateway
+    spec:
+      serviceAccountName: sglang-gateway
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 240
+      containers:
+        - name: gateway
+          image: lmsysorg/sgl-model-gateway:latest
+          imagePullPolicy: Always
+          # Explicit entrypoint avoids depending on the image's default command.
+          command: [python3, -m, sglang_router.launch_router]
+          args:
+            - --host=0.0.0.0
+            - --port=8000
+            - --policy=cache_aware
+            - --service-discovery
+            - --service-discovery-namespace=inference
+            - --service-discovery-port=30000
+            # Multiple selector entries are separate arguments, all must match.
+            - --selector
+            - app=sglang-worker
+            - role=inference
+            - model=swift-27b
+            - --request-timeout-secs=3600
+            - --shutdown-grace-period-secs=180
+          ports:
+            - name: gateway-http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          startupProbe:
+            httpGet:
+              path: /liveness
+              port: gateway-http
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: gateway-http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: gateway-http
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-gateway
+  namespace: inference
+spec:
+  type: ClusterIP
+  selector:
+    app: sglang-gateway
+  ports:
+    - name: http
+      port: 8000
+      targetPort: gateway-http
+---
+# Keep cache/control interfaces internal. Transfer-engine peer ports can be
+# dynamically allocated, so permit all TCP between these cache participants.
+# These policies require a CNI that enforces Kubernetes NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mooncake-ingress
+  namespace: inference
+spec:
+  podSelector:
+    matchLabels:
+      app: mooncake
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: sglang-worker
+        - podSelector:
+            matchLabels:
+              app: mooncake
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sglang-worker-ingress
+  namespace: inference
+spec:
+  podSelector:
+    matchLabels:
+      app: sglang-worker
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: sglang-gateway
+      ports:
+        - protocol: TCP
+          port: 30000
+    - from:
+        - podSelector:
+            matchLabels:
+              app: mooncake
+        - podSelector:
+            matchLabels:
+              app: sglang-worker
+
